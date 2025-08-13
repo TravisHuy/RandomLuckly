@@ -40,15 +40,15 @@ class LotteryViewModel @Inject constructor(
     private var pausedAtPrizeIndex: Int = 0
 
     private val prizes = listOf(
-        LotteryPrize("eighth", "Giải Tám", "Giải Tám", 1, 2, 2000L),
-        LotteryPrize("seventh", "Giải Bảy", "Giải Bảy", 1, 3, 3000L),
-        LotteryPrize("sixth", "Giải Sáu", "Giải Sáu", 3, 4, 3000L),
-        LotteryPrize("fifth", "Giải Năm", "Giải Năm", 1, 4, 4000L),
-        LotteryPrize("fourth", "Giải Tư", "Giải Tư", 7, 5, 4000L),
-        LotteryPrize("third", "Giải Ba", "Giải Ba", 2, 5, 5000L),
-        LotteryPrize("second", "Giải Hai", "Giải Hai", 1, 5, 3000L),
-        LotteryPrize("first", "Giải Nhất", "Giải Nhất", 1, 5, 3000L),
-        LotteryPrize("special", "Giải Đặc Biệt", "GIẢI ĐẶC BIỆT", 1, 6, 2000L)
+        LotteryPrize("eighth", "Giải Tám", "Giải Tám", 1, 2, 4000L),
+        LotteryPrize("seventh", "Giải Bảy", "Giải Bảy", 1, 3, 4500L),
+        LotteryPrize("sixth", "Giải Sáu", "Giải Sáu", 3, 4, 4500L),
+        LotteryPrize("fifth", "Giải Năm", "Giải Năm", 1, 4, 5000L),
+        LotteryPrize("fourth", "Giải Tư", "Giải Tư", 7, 5, 8000L),
+        LotteryPrize("third", "Giải Ba", "Giải Ba", 2, 5, 5500L),
+        LotteryPrize("second", "Giải Hai", "Giải Hai", 1, 5, 4500L),
+        LotteryPrize("first", "Giải Nhất", "Giải Nhất", 1, 5, 5000L),
+        LotteryPrize("special", "Giải Đặc Biệt", "GIẢI ĐẶC BIỆT", 1, 6, 6000L)
     )
 
     init {

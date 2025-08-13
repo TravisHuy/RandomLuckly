@@ -10,7 +10,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -48,6 +47,13 @@ fun LotteryScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
 
+    // State cho hiệu ứng dropping balls và floating results
+    var droppingNumbers by remember { mutableStateOf<List<String>>(emptyList()) }
+    var floatingResults by remember { mutableStateOf<List<String>>(emptyList()) }
+    var currentPrizeName by remember { mutableStateOf("") }
+    var isShowingResults by remember { mutableStateOf(false) }
+    var droppingColors by remember { mutableStateOf<List<Color>>(emptyList()) }
+
     // Theo dõi số lượng kết quả để tự động scroll
     val previousResultCount = remember { mutableStateOf(uiState.results.size) }
     val isFirstLaunch = remember { mutableStateOf(true) }
@@ -58,49 +64,106 @@ fun LotteryScreen(
     val hasValidSession = uiState.completedSession != null &&
             uiState.completedSession!!.results.isNotEmpty()
 
+    // ✅ Enhanced result handling với scroll logic cải thiện
+    LaunchedEffect(uiState.results.size, uiState.isRolling) {
+        val latestResult = uiState.results.values.lastOrNull()
 
-    LaunchedEffect(uiState.results.size, uiState.isRolling, uiState.currentPrize) {
+        if (latestResult != null && !uiState.isRolling && latestResult.numbers.isNotEmpty()) {
+            currentPrizeName = latestResult.prize.displayName
+
+            // Xác định màu sắc theo giải
+            val prizeColors = List(latestResult.numbers.size) {
+                when {
+                    latestResult.prize.id == "special" -> Color(0xFFFFD700) // Vàng
+                    latestResult.prize.id == "first" -> Color(0xFFE91E63)   // Hồng
+                    latestResult.prize.id == "second" -> Color(0xFF2196F3)  // Xanh dương
+                    latestResult.prize.id == "third" -> Color(0xFF4CAF50)   // Xanh lá
+                    else -> Color(0xFF4FC3F7) // Xanh nhạt
+                }
+            }
+
+            // ✅ Phase 1: Chuẩn bị và scroll đến vị trí dropping
+            droppingNumbers = latestResult.numbers
+            droppingColors = prizeColors
+            isShowingResults = false
+
+            // ✅ Scroll để dropping balls hiển thị trong viewport - Position tối ưu
+            delay(100)
+            val droppingScrollTarget = when {
+                latestResult.numbers.size <= 3 -> 450   // ✅ Position cao hơn cho ít số
+                latestResult.numbers.size <= 6 -> 480   // ✅ Position trung bình
+                latestResult.numbers.size <= 10 -> 500  // ✅ Position thấp hơn cho nhiều số
+                else -> 520                             // ✅ Position thấp nhất
+            }
+            scrollState.animateScrollTo(droppingScrollTarget)
+
+            // ✅ Đợi dropping animation hoàn thành - timing tối ưu
+            val dropDuration = when {
+                latestResult.numbers.size == 1 -> 1800L                    // 1 số: 1.8s
+                latestResult.numbers.size <= 3 -> 2500L                    // 2-3 số: 2.5s
+                latestResult.numbers.size <= 6 -> 3200L                    // 4-6 số: 3.2s
+                latestResult.numbers.size <= 10 -> 4000L                   // 7-10 số: 4s
+                latestResult.numbers.size <= 15 -> 5000L                   // 11-15 số: 5s
+                else -> 6000L                            // Nhiều số
+            }
+            delay(dropDuration)
+
+            // ✅ Phase 2: Clear dropping, show floating results với smooth transition
+            droppingNumbers = emptyList()
+            floatingResults = latestResult.numbers
+            isShowingResults = true
+
+            // ✅ Scroll để floating results hiển thị tối ưu
+            delay(300)
+            val floatingScrollTarget = when {
+                floatingResults.size <= 3 -> 750
+                floatingResults.size <= 6 -> 800
+                floatingResults.size <= 12 -> 850
+                else -> 900
+            }
+            scrollState.animateScrollTo(floatingScrollTarget)
+
+            val floatingDisplayDuration = when {
+                latestResult.numbers.size <= 3 -> 3000L       // Ít số: hiển thị 3s
+                latestResult.numbers.size <= 6 -> 4000L       // Trung bình: hiển thị 4s
+                latestResult.numbers.size <= 10 -> 5000L      // Nhiều số: hiển thị 5s
+                latestResult.numbers.size <= 15 -> 6000L      // Rất nhiều: hiển thị 6s
+                else -> 7000L                                 // Cực nhiều: hiển thị 7s
+            }
+
+            delay(floatingDisplayDuration)
+            isShowingResults = false
+            floatingResults = emptyList()
+
+            // ✅ Final scroll đến latest result section - smooth transition
+            delay(800L)
+            scrollState.animateScrollTo(1100)
+        }
+
+        // Reset khi bắt đầu giải mới
+        if (uiState.isRolling && uiState.currentPrize != null) {
+            droppingNumbers = emptyList()
+            floatingResults = emptyList()
+            isShowingResults = false
+
+            // ✅ Scroll về lottery machine khi bắt đầu quay - position tối ưu
+            delay(200)
+            scrollState.animateScrollTo(150)
+        }
+    }
+
+    // Auto scroll logic cho các trường hợp khác
+    LaunchedEffect(uiState.results.size, uiState.isRolling) {
         if (isFirstLaunch.value) {
             isFirstLaunch.value = false
             previousResultCount.value = uiState.results.size
             return@LaunchedEffect
         }
 
-        // Khi bắt đầu quay giải mới
-        if (uiState.isRolling && uiState.results.isEmpty() && uiState.currentPrize != null) {
-            // Scroll về đầu để user thấy được lottery machine và current prize
-            scrollState.animateScrollTo(0)
-            previousResultCount.value = 0
-            return@LaunchedEffect
-        }
-
-        // Khi có kết quả mới được tạo ra
-        if (uiState.results.size > previousResultCount.value && !uiState.isRolling) {
-            // Đợi animation hiển thị kết quả hoàn thành
-            delay(400)
-
-            // Tính toán vị trí scroll để hiển thị "Latest Result Section"
-            val targetScrollPosition = when {
-                uiState.results.size == 1 -> 700    // Scroll vừa đủ để thấy kết quả đầu tiên
-                uiState.results.size <= 3 -> 900    // Scroll cho 2-3 kết quả
-                else -> 1100                        // Scroll nhiều hơn khi có nhiều kết quả
-            }
-
-            scrollState.animateScrollTo(targetScrollPosition)
-            previousResultCount.value = uiState.results.size
-        }
-
         // Khi reset hoàn toàn (làm mới)
         if (!uiState.isRolling && uiState.results.isEmpty() && uiState.currentPrize == null) {
             scrollState.animateScrollTo(0)
             previousResultCount.value = 0
-        }
-    }
-
-    //  scroll khi bắt đầu quay giải tiếp theo
-    LaunchedEffect(uiState.currentPrize?.id) {
-        if (uiState.isRolling && uiState.currentPrize != null) {
-            scrollState.animateScrollTo(200)
         }
     }
 
@@ -157,18 +220,32 @@ fun LotteryScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Lottery machine - more compact
+            // Enhanced Lottery machine với số thật
             LotteryBallMachine(
                 isRolling = uiState.isRolling && !uiState.isPaused,
                 rollingProgress = uiState.rollingProgress,
+                currentNumbers = uiState.currentPrize?.let { prize ->
+                    // Tạo danh sách số có thể trúng cho giải này
+                    when (prize.id) {
+                        "special" -> (1..99).map { it.toString().padStart(2, '0') }.shuffled()
+                            .take(12)
+
+                        "first" -> (1..99).map { it.toString().padStart(2, '0') }.shuffled()
+                            .take(10)
+
+                        "second" -> (10..99).map { it.toString() }.shuffled().take(15)
+                        "third" -> (100..999).map { it.toString() }.shuffled().take(20)
+                        else -> (1..50).map { it.toString() }.shuffled().take(8)
+                    }
+                } ?: emptyList(),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
+                    .height(300.dp)
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            // Control buttons - improved layout
+            // Control buttons
             ControlButtonsSection(
                 uiState = uiState,
                 onStart = { viewModel.startLottery() },
@@ -177,21 +254,102 @@ fun LotteryScreen(
                 onResume = { viewModel.resumeLottery() },
                 onReset = {
                     viewModel.resetLottery()
+                    // Clear effects
+                    droppingNumbers = emptyList()
+                    floatingResults = emptyList()
+                    isShowingResults = false
                     previousResultCount.value = 0
                     isFirstLaunch.value = false
                 }
             )
 
+            // ✅ Enhanced spacing cho dropping animation section
+            Spacer(modifier = Modifier.height(32.dp)) // ✅ Tăng spacing
+
+            // ✅ Dropping balls animation với position tối ưu
+            if (droppingNumbers.isNotEmpty()) {
+                // ✅ Container với padding để đảm bảo dropping balls hiển thị đầy đủ
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(80.dp) // ✅ Tăng height để có đủ không gian cho animation
+                        .padding(horizontal = 6.dp), // ✅ Padding ngang để tránh cắt ball
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    DroppingBallCompleted(
+                        numbers = droppingNumbers,
+                        colors = droppingColors,
+                        isDropping = true,
+                        onAllDropsComplete = {
+                            // Sound effect hoặc haptic feedback có thể thêm ở đây
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(60.dp) // ✅ Height phù hợp với container
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp)) // ✅ Spacing sau dropping
+            }
+
+            // Enhanced floating results grid
+            if (isShowingResults && floatingResults.isNotEmpty()) {
+                FloatingResultGrid(
+                    numbers = floatingResults,
+                    prizeName = currentPrizeName,
+                    isSpecialPrize = currentPrizeName.contains("Đặc biệt"),
+                    isVisible = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Progress hint for multiple numbers
+                if (floatingResults.size > 6) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFF4FC3F7).copy(alpha = 0.1f)
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = null,
+                                tint = Color(0xFF4FC3F7),
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = "💡 ${floatingResults.size} số trúng thưởng - Tự động ẩn sau 4 giây để tiếp tục",
+                                fontSize = 13.sp,
+                                color = Color(0xFF4FC3F7),
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // ✅ Spacing tối ưu trước latest result
             Spacer(modifier = Modifier.height(24.dp))
 
-            if (hasValidResults && !uiState.isRolling) {
+            // Latest result section (khi không có floating)
+            if (hasValidResults && !uiState.isRolling && !isShowingResults) {
                 LatestResultSection(
                     uiState = uiState,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
 
-            //hiển thị khi có từ 2 kết quả trở lên
+            // Results board cho nhiều giải
             if ((hasValidResults && uiState.results.size >= 2) || hasValidSession) {
                 Spacer(modifier = Modifier.height(16.dp))
                 LotteryResultsBoard(
@@ -209,7 +367,7 @@ fun LotteryScreen(
                 }
             }
 
-            // padding bottom để đảm bảo có thể scroll đầy đủ
+            // Bottom padding
             Spacer(modifier = Modifier.height(120.dp))
         }
     }
@@ -224,7 +382,7 @@ private fun LatestResultSection(
     val latestResult = uiState.results.values.lastOrNull()
 
     AnimatedVisibility(
-        visible = latestResult != null && !uiState.isRolling ,
+        visible = latestResult != null && !uiState.isRolling,
         enter = slideInVertically(
             initialOffsetY = { fullHeight -> fullHeight },
             animationSpec = spring(
@@ -623,7 +781,7 @@ private fun TopHeader(
             //dropdown menu
             DropdownMenu(
                 expanded = showDropdownMenu,
-                onDismissRequest = { showDropdownMenu = false},
+                onDismissRequest = { showDropdownMenu = false },
                 modifier = Modifier.background(
                     color = Color(0xFF1A1A2E),
                     shape = RoundedCornerShape(12.dp)
@@ -666,8 +824,10 @@ private fun TopHeader(
                 //Settings menu item
                 DropdownMenuItem(
                     text = {
-                        Row(verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.Settings,
                                 contentDescription = null,
@@ -675,13 +835,14 @@ private fun TopHeader(
                                 modifier = Modifier.size(20.dp)
                             )
 
-                            Text(text = "Cài đặt",
+                            Text(
+                                text = "Cài đặt",
                                 color = Color.White,
                                 fontSize = 16.sp,
-                                fontWeight = FontWeight.Medium)
+                                fontWeight = FontWeight.Medium
+                            )
                         }
-                    }
-                    , onClick = {
+                    }, onClick = {
                         showDropdownMenu = false
                         onNavigateToSettings()
                     },
@@ -934,6 +1095,7 @@ private fun CurrentPrizeCard(
     }
 }
 
+// Giữ nguyên ControlButtonsSection từ version cũ
 @Composable
 private fun ControlButtonsSection(
     uiState: LotteryUiState,
@@ -1029,7 +1191,7 @@ private fun ControlButtonsSection(
             }
         }
 
-        // ✅ Enhanced secondary control buttons - hiển thị khi đang chạy HOẶC có kết quả và không hoàn thành
+        // Enhanced secondary control buttons - hiển thị khi đang chạy HOẶC có kết quả và không hoàn thành
         AnimatedVisibility(
             visible = uiState.isRunning || (uiState.results.isNotEmpty() && uiState.completedSession == null),
             enter = slideInVertically() + fadeIn(),
@@ -1039,7 +1201,7 @@ private fun ControlButtonsSection(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // ✅ Pause button - hiển thị khi đang rolling HOẶC có kết quả và session chưa hoàn thành
+                // Pause button - hiển thị khi đang rolling HOẶC có kết quả và session chưa hoàn thành
                 if (uiState.canPause || (!uiState.isRolling && uiState.results.isNotEmpty() && uiState.completedSession == null)) {
                     Button(
                         onClick = {
@@ -1073,33 +1235,6 @@ private fun ControlButtonsSection(
                     }
                 }
 
-                // ✅ Continue button - chỉ hiển thị khi có kết quả và session chưa hoàn thành và không đang rolling
-//                if (!uiState.isRolling && uiState.results.isNotEmpty() && uiState.completedSession == null && !uiState.isPaused) {
-//                    Button(
-//                        onClick = onResume, // Tiếp tục quay giải tiếp theo
-//                        modifier = Modifier
-//                            .weight(1f)
-//                            .height(44.dp),
-//                        colors = ButtonDefaults.buttonColors(
-//                            containerColor = LotteryGreen
-//                        ),
-//                        shape = RoundedCornerShape(22.dp)
-//                    ) {
-//                        Icon(
-//                            imageVector = Icons.Default.PlayArrow,
-//                            contentDescription = null,
-//                            modifier = Modifier.size(16.dp)
-//                        )
-//                        Spacer(modifier = Modifier.width(6.dp))
-//                        Text(
-//                            text = "Tiếp tục",
-//                            fontSize = 13.sp,
-//                            fontWeight = FontWeight.Medium,
-//                            color = Color.White
-//                        )
-//                    }
-//                }
-
                 // Stop button - luôn hiển thị khi có activity
                 OutlinedButton(
                     onClick = onReset,
@@ -1126,7 +1261,7 @@ private fun ControlButtonsSection(
             }
         }
 
-        // ✅ Result viewing hint - hiển thị khi có kết quả mới
+        // Result viewing hint - hiển thị khi có kết quả mới
         if (!uiState.isRolling && uiState.results.isNotEmpty() && uiState.completedSession == null) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
