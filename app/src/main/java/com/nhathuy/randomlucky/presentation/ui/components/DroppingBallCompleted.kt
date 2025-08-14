@@ -32,15 +32,15 @@ fun DroppingBallCompleted(
         if (isDropping && numbers.isNotEmpty()) {
             currentlyDropping = List(numbers.size) { false }
 
-            // Tối ưu delay để dropping nhanh và mượt hơn
+            // Tối ưu delay để dropping nhanh hơn - giảm thêm delay time
             numbers.forEachIndexed { index, _ ->
                 val delayTime = when {
                     numbers.size == 1 -> 0L                    // 1 số: không delay
-                    numbers.size <= 3 -> 200L * index          // 2-3 số: 200ms giữa mỗi quả
-                    numbers.size <= 6 -> 150L * index          // 4-6 số: 150ms
-                    numbers.size <= 10 -> 120L * index         // 7-10 số: 120ms
-                    numbers.size <= 15 -> 100L * index         // 11-15 số: 100ms
-                    else -> 80L * index                   // Nhiều số: 150ms
+                    numbers.size <= 3 -> 150L * index          // 2-3 số:  150ms
+                    numbers.size <= 6 -> 100L * index          // 4-6 số:  100ms
+                    numbers.size <= 10 -> 80L * index          // 7-10 số: 80ms
+                    numbers.size <= 15 -> 60L * index          // 11-15 số:  60ms
+                    else -> 50L * index                        // Nhiều số:  50ms
                 }
 
                 delay(delayTime)
@@ -51,10 +51,10 @@ fun DroppingBallCompleted(
 
             // Giảm final delay để chuyển đổi nhanh hơn
             val finalDelay = when {
-                numbers.size == 1 -> 500L      // 1 số: 1.2s
-                numbers.size <= 3 -> 600L      // 2-3 số: 1.4s
-                numbers.size <= 6 -> 700L      // 4-6 số: 1.6s
-                else -> 800L                   // Nhiều số: 1.8s
+                numbers.size == 1 -> 300L      // 1 số: giảm từ 500L xuống 300L
+                numbers.size <= 3 -> 400L      // 2-3 số: giảm từ 600L xuống 400L
+                numbers.size <= 6 -> 500L      // 4-6 số: giảm từ 700L xuống 500L
+                else -> 600L                   // Nhiều số: giảm từ 800L xuống 600L
             }
             delay(finalDelay)
             onAllDropsComplete()

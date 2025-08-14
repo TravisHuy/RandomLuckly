@@ -6,6 +6,7 @@ import com.nhathuy.randomlucky.data.sound.SettingManager
 import com.nhathuy.randomlucky.data.sound.SoundManager
 import com.nhathuy.randomlucky.domain.model.LotteryPrize
 import com.nhathuy.randomlucky.domain.model.LotteryResult
+import com.nhathuy.randomlucky.domain.repository.LotteryRepository
 import com.nhathuy.randomlucky.domain.usecase.RunLotterySessionUseCase
 import com.nhathuy.randomlucky.presentation.state.LotteryUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,7 +26,8 @@ import javax.inject.Inject
 class LotteryViewModel @Inject constructor(
     private val runLotterySession: RunLotterySessionUseCase,
     private val soundManager: SoundManager,
-    private val settingsManager: SettingManager
+    private val settingsManager: SettingManager,
+    private val lotteryRepository: LotteryRepository
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(LotteryUiState())
     val uiState: StateFlow<LotteryUiState> = _uiState.asStateFlow()
@@ -34,15 +36,15 @@ class LotteryViewModel @Inject constructor(
     val isVibrationEnabled = settingsManager.isVibrationEnabled
     val isDarkModeEnabled = settingsManager.isDarkModeEnabled
 
-
     private var currentLotteryJob: Job? = null
     private var currentSessionId: String? = null
     private var pausedAtPrizeIndex: Int = 0
 
+    // ✅ Track current session to compare with repository
     private val prizes = listOf(
         LotteryPrize("eighth", "Giải Tám", "Giải Tám", 1, 2, 4000L),
         LotteryPrize("seventh", "Giải Bảy", "Giải Bảy", 1, 3, 4500L),
-        LotteryPrize("sixth", "Giải Sáu", "Giải Sáu", 3, 4, 4500L),
+        LotteryPrize("sixth", "Giải Sáu", "Giải Sáu", 3, 4, 5500L),
         LotteryPrize("fifth", "Giải Năm", "Giải Năm", 1, 4, 5000L),
         LotteryPrize("fourth", "Giải Tư", "Giải Tư", 7, 5, 8000L),
         LotteryPrize("third", "Giải Ba", "Giải Ba", 2, 5, 5500L),
@@ -57,16 +59,15 @@ class LotteryViewModel @Inject constructor(
 
     private fun observeSettingsChanges() {
         settingsManager.isSoundEnabled
-            .onEach {
-                    soundEnabled ->
-                if(!soundEnabled){
+            .onEach { soundEnabled ->
+                if (!soundEnabled) {
                     soundManager.stop()
                 }
             }.launchIn(viewModelScope)
 
         settingsManager.isVibrationEnabled
             .onEach { vibrationEnabled ->
-                if(!vibrationEnabled){
+                if (!vibrationEnabled) {
                     soundManager.cancelVibration()
                 }
             }.launchIn(viewModelScope)
@@ -179,8 +180,7 @@ class LotteryViewModel @Inject constructor(
                             if (event.result.prize.id == "special") {
                                 soundManager.play(SoundManager.SoundEffect.WIN_FANFARE)
                                 soundManager.vibrateSpecialWin()
-                            }
-                            else{
+                            } else {
                                 soundManager.vibrateSuccess()
                             }
                         }
@@ -216,10 +216,27 @@ class LotteryViewModel @Inject constructor(
         currentLotteryJob?.cancel()
     }
 
+    //  Enhanced method để pause khi đang xem kết quả
+    fun pauseForViewingResults() {
+        // Cancel current lottery job immediately
+        currentLotteryJob?.cancel()
+
+        // Stop all sounds
+        soundManager.stop()
+        soundManager.cancelVibration()
+
+        // Update state to paused
+        _uiState.update { it.copy(isPaused = true) }
+
+        println("DEBUG: Paused for viewing results - lottery stopped")
+    }
+
     fun resumeLottery() {
         if (!_uiState.value.isPaused) return
 
         val currentState = _uiState.value
+
+        println("DEBUG: Resuming lottery from index $pausedAtPrizeIndex")
 
         // Tiếp tục từ vị trí đã tạm dừng
         startLotteryFromIndex(
@@ -229,7 +246,7 @@ class LotteryViewModel @Inject constructor(
         )
     }
 
-    fun resetLottery(){
+    fun resetLottery() {
         currentLotteryJob?.cancel()
         soundManager.stop()
 
@@ -249,30 +266,21 @@ class LotteryViewModel @Inject constructor(
             currentPrizeIndex = 0,
             remainingPrizes = emptyList()
         )
+
+        println("DEBUG: LotteryViewModel reset completed")
     }
 
     fun resetForAppReset() {
-        // Stop current lottery
         resetLottery()
-
-        // Reinitialize SoundManager
         soundManager.reinitialize()
-
-        // Force reset state và refresh settings
         viewModelScope.launch {
-            // Refresh settings từ SharedPreferences
             settingsManager.refreshAllSettings()
-
-            // Reset UI state
             _uiState.emit(LotteryUiState())
-
-                // Wait a bit để đảm bảo settings được update
             delay(100)
-
-            // Re-observe settings sau reset
             observeSettingsChanges()
         }
     }
+
     override fun onCleared() {
         super.onCleared()
         currentLotteryJob?.cancel()
