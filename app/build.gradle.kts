@@ -75,6 +75,9 @@ dependencies {
     // lifecycle compose
     implementation(libs.androidx.lifecycle.compose)
 
+    // google play ads
+    implementation(libs.google.play.services.ads)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

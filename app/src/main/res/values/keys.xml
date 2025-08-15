@@ -1,0 +1,10 @@
+<resources>
+    <!-- AdMob App ID -->
+    <string name="admob_app_id">ca-app-pub-1809276120261084~7978787040</string>
+
+    <!-- AdMob Banner Unit ID -->
+    <string name="banner_ad_unit_id">ca-app-pub-1809276120261084/9923258259</string>
+
+    <!-- Test AdMob Banner Unit ID (for development) -->
+    <string name="test_banner_ad_unit_id">ca-app-pub-3940256099942544/6300978111</string>
+</resources>

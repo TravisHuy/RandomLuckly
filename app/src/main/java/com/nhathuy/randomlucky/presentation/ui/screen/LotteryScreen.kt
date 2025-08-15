@@ -25,6 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -408,11 +410,19 @@ fun LotteryScreen(
             if (hasValidSession) {
                 uiState.completedSession?.let { session ->
                     SessionCompletionCard(session = session)
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    AdsBannerView(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp),
+                        adUnitId = stringResource(com.nhathuy.randomlucky.R.string.banner_ad_unit_id)
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
             }
-
-            // Bottom padding
-            Spacer(modifier = Modifier.height(120.dp))
         }
 
         // Floating Result Dialog - hiển thị như overlay
@@ -1613,7 +1623,7 @@ private fun ControlButtonsSection(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = "✨ Kết quả đã s��n sàng! Bạn có thể xem kết quả hoặc tiếp tục quay giải tiếp theo.",
+                        text = "✨ Kết quả đã sẵn sàng! Bạn có thể xem kết quả hoặc tiếp tục quay giải tiếp theo.",
                         fontSize = 12.sp,
                         color = LotteryGold,
                         fontWeight = FontWeight.Medium,
@@ -1703,4 +1713,3 @@ private fun SessionCompletionCard(
         }
     }
 }
-
