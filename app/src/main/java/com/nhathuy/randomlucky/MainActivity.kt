@@ -45,8 +45,20 @@ fun RandomLuckyApp(){
             val shouldReset = backStackEntry.savedStateHandle.get<Boolean>("reset_lottery") ?: false
 
             LotteryScreen(
-                onNavigateToHistory = { navController.navigate("history") },
-                onNavigateToSettings = { navController.navigate("settings") },
+                onNavigateToHistory = {
+                    // ✅ Clear navigation flag to ensure clean return
+                    navController.currentBackStackEntry
+                        ?.savedStateHandle
+                        ?.set("returning_to_lottery", false)
+                    navController.navigate("history")
+                },
+                onNavigateToSettings = {
+                    // ✅ Clear navigation flag to ensure clean return
+                    navController.currentBackStackEntry
+                        ?.savedStateHandle
+                        ?.set("returning_to_lottery", false)
+                    navController.navigate("settings")
+                },
                 shouldReset = shouldReset,
                 onResetHandled = {
                     backStackEntry.savedStateHandle.remove<Boolean>("reset_lottery")

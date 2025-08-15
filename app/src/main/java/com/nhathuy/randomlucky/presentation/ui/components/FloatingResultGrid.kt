@@ -74,22 +74,22 @@ fun FloatingResultGrid(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Enhanced Prize Title với animation
-            AnimatedVisibility(
-                visible = showTitle,
-                enter = slideInVertically(
-                    initialOffsetY = { -it },
-                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
-                ) + fadeIn(),
-                exit = slideOutVertically() + fadeOut()
-            ) {
-                PrizeTitle(
-                    title = prizeName,
-                    isSpecial = isSpecialPrize,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
+//            AnimatedVisibility(
+//                visible = showTitle,
+//                enter = slideInVertically(
+//                    initialOffsetY = { -it },
+//                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)
+//                ) + fadeIn(),
+//                exit = slideOutVertically() + fadeOut()
+//            ) {
+//                PrizeTitle(
+//                    title = prizeName,
+//                    isSpecial = isSpecialPrize,
+//                    modifier = Modifier.padding(horizontal = 16.dp)
+//                )
+//            }
+//
+//            Spacer(modifier = Modifier.height(20.dp))
 
             // Results grid - responsive layout với enhanced spacing
             LazyVerticalGrid(

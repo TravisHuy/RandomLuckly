@@ -266,8 +266,6 @@ class LotteryViewModel @Inject constructor(
             currentPrizeIndex = 0,
             remainingPrizes = emptyList()
         )
-
-        println("DEBUG: LotteryViewModel reset completed")
     }
 
     fun resetForAppReset() {

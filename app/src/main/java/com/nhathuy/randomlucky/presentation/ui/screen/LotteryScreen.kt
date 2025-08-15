@@ -1,5 +1,6 @@
 package com.nhathuy.randomlucky.presentation.ui.screen
 
+import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
@@ -41,6 +42,8 @@ import com.nhathuy.randomlucky.presentation.viewmodel.HistoryViewModel
 import com.nhathuy.randomlucky.presentation.theme.*
 import kotlinx.coroutines.delay
 
+private const val LOTTERY_SCREEN_TAG = "LotteryScreen"
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LotteryScreen(
@@ -54,13 +57,25 @@ fun LotteryScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
 
-    // ✅ Reset lottery only when explicitly requested (when history was cleared)
+    // kiểm tra xem đã quay về màn hình nào chưa
+    var isReturningFromNavigation by remember { mutableStateOf(false) }
+
+    // reset khi xóa tất cả lịch sử back về lottery
     LaunchedEffect(shouldReset) {
         if (shouldReset) {
             viewModel.resetLottery()
             onResetHandled()
-            println("DEBUG: Lottery reset due to history being cleared")
+            Log.d(LOTTERY_SCREEN_TAG, "DEBUG: Lottery reset due to history being cleared")
         }
+    }
+
+
+    // reset floating dialog và scroll khi quay về màn hình
+    LaunchedEffect(Unit) {
+        // đây sẽ chạy mỗi khi chúng ta chuyển về màn hình này
+        isReturningFromNavigation = true
+        delay(100)
+        isReturningFromNavigation = false
     }
 
     // State cho hiệu ứng dropping balls và floating results
@@ -72,6 +87,28 @@ fun LotteryScreen(
     var isSpecialPrize by remember { mutableStateOf(false) }
     var isViewingResults by remember { mutableStateOf(false) }
 
+
+    // reset floating dialog trạng thái khi trờ về màn hình
+    LaunchedEffect(isReturningFromNavigation) {
+        if (isReturningFromNavigation) {
+            // xóa floating dialog và hiển thị kết quả mới nhất.
+            isShowingFloatingDialog = false
+            floatingResults = emptyList()
+            isViewingResults = false
+            droppingNumbers = emptyList()
+            droppingColors = emptyList()
+
+            // reset scroll và hiển thị kết quả vừa quay
+            if (uiState.results.isNotEmpty()) {
+                delay(200)
+                // Scroll xuống kết quả vừa quay
+                scrollState.animateScrollTo(800)
+            }
+
+            Log.d(LOTTERY_SCREEN_TAG, "DEBUG: Reset floating dialog state on navigation return")
+        }
+    }
+
     // Theo dõi số lượng kết quả để tự động scroll
     val previousResultCount = remember { mutableStateOf(uiState.results.size) }
     val isFirstLaunch = remember { mutableStateOf(true) }
@@ -82,7 +119,7 @@ fun LotteryScreen(
     val hasValidSession = uiState.completedSession != null &&
             uiState.completedSession!!.results.isNotEmpty()
 
-    // ✅ Clear all effects when lottery is reset (only when shouldReset is true)
+    // xóa tất cả các hiệu ứng khi giải đã reset
     LaunchedEffect(uiState.results.isEmpty() && !uiState.isRunning, shouldReset) {
         if (shouldReset && uiState.results.isEmpty() && !uiState.isRunning && uiState.currentPrize == null) {
             droppingNumbers = emptyList()
@@ -92,15 +129,21 @@ fun LotteryScreen(
             droppingColors = emptyList()
             currentPrizeName = ""
             isSpecialPrize = false
-            println("DEBUG: All effects cleared due to explicit lottery reset")
+            Log.d(LOTTERY_SCREEN_TAG, "DEBUG: All effects cleared due to explicit lottery reset")
         }
     }
 
     // Enhanced result handling với dialog logic
-    LaunchedEffect(uiState.results.size, uiState.isRolling) {
+    LaunchedEffect(uiState.results.size, uiState.isRolling, isReturningFromNavigation, uiState.completedSession) {
         val latestResult = uiState.results.values.lastOrNull()
 
-        if (latestResult != null && !uiState.isRolling && latestResult.numbers.isNotEmpty()) {
+        // Không trigger animation nếu session đã hoàn thành hoặc đang quay về từ navigation
+        if (latestResult != null &&
+            !uiState.isRolling &&
+            latestResult.numbers.isNotEmpty() &&
+            !isReturningFromNavigation &&
+            uiState.completedSession == null //Chỉ trigger khi session chưa hoàn thành
+        ) {
             currentPrizeName = latestResult.prize.displayName
             isSpecialPrize = latestResult.prize.id == "special"
 
@@ -151,7 +194,7 @@ fun LotteryScreen(
             }
         }
 
-        // Reset khi bắt đầu giải m���i
+        // Reset khi bắt đầu giải mới
         if (uiState.isRolling && uiState.currentPrize != null) {
             droppingNumbers = emptyList()
             floatingResults = emptyList()
@@ -182,20 +225,30 @@ fun LotteryScreen(
     // reset khi session hoàn thành hoặc reset lottery
     LaunchedEffect(uiState.completedSession, uiState.results.isEmpty()) {
         if (uiState.completedSession != null || uiState.results.isEmpty()) {
+            // Clear tất cả animation states khi session hoàn thành
             isShowingFloatingDialog = false
             floatingResults = emptyList()
             isViewingResults = false
             droppingNumbers = emptyList()
+            droppingColors = emptyList()
+
+            Log.d(LOTTERY_SCREEN_TAG, "DEBUG: Cleared all animation states - session completed: ${uiState.completedSession != null}, results empty: ${uiState.results.isEmpty()}")
         }
     }
 
     val handleNavigateToHistory = {
-        // ✅ Don't clear floating dialog when navigating to history - keep current state
+        // xóa floating dialog trước khi chuyển hướng
+        isShowingFloatingDialog = false
+        floatingResults = emptyList()
+        isViewingResults = false
+        droppingNumbers = emptyList()
+        droppingColors = emptyList()
+
         onNavigateToHistory()
     }
 
     val handleNavigateToSettings = {
-        // ✅ Clear floating dialog when navigating to settings (settings might affect current session)
+        // xóa floating dialog trước khi chuyển hướng
         isShowingFloatingDialog = false
         floatingResults = emptyList()
         isViewingResults = false
@@ -219,7 +272,7 @@ fun LotteryScreen(
                 )
             )
     ) {
-        // Special effects overlay
+        // hiển thị giải đặc biệt
         SpecialEffectsOverlay(
             isActive = uiState.isRolling && uiState.currentPrize?.id == "special" && !uiState.isPaused,
             modifier = Modifier.fillMaxSize()
@@ -302,10 +355,10 @@ fun LotteryScreen(
                 }
             )
 
-            // ✅ Enhanced spacing cho dropping animation section
+
             Spacer(modifier = Modifier.height(32.dp))
 
-            // ✅ Dropping balls animation với position tối ưu
+            // Dropping balls animation với position tối ưu
             if (droppingNumbers.isNotEmpty()) {
                 Box(
                     modifier = Modifier
@@ -330,7 +383,6 @@ fun LotteryScreen(
                 Spacer(modifier = Modifier.height(10.dp))
             }
 
-            // ✅ Spacing tối ưu trước latest result
             Spacer(modifier = Modifier.height(24.dp))
 
             // Latest result section (khi không có floating)
@@ -363,7 +415,7 @@ fun LotteryScreen(
             Spacer(modifier = Modifier.height(120.dp))
         }
 
-        // ✅ Floating Result Dialog - hiển thị như overlay
+        // Floating Result Dialog - hiển thị như overlay
         if (isShowingFloatingDialog && floatingResults.isNotEmpty()) {
             Dialog(
                 onDismissRequest = {
@@ -383,21 +435,21 @@ fun LotteryScreen(
                     prizeName = currentPrizeName,
                     isSpecialPrize = isSpecialPrize,
                     isViewingResults = isViewingResults,
-                    isLastPrize = isSpecialPrize, // ✅ Giải đặc biệt là giải cuối cùng
+                    isLastPrize = isSpecialPrize, // Giải đặc biệt là giải cuối cùng
                     onViewResults = {
                         isViewingResults = true
-                        // ✅ Thực sự pause lottery thông qua viewModel
+                        //  Thực sự pause lottery thông qua viewModel
                         viewModel.pauseForViewingResults()
                     },
                     onContinue = {
                         isShowingFloatingDialog = false
                         floatingResults = emptyList()
                         isViewingResults = false
-                        // ✅ Resume lottery để tiếp tục quay giải tiếp theo
+                        // Resume lottery để tiếp tục quay giải tiếp theo
                         viewModel.resumeLottery()
                     },
                     onClose = {
-                        // ✅ Đóng dialog khi là giải cuối cùng
+                        // Đóng dialog khi là giải cuối cùng
                         isShowingFloatingDialog = false
                         floatingResults = emptyList()
                         isViewingResults = false
@@ -408,14 +460,14 @@ fun LotteryScreen(
     }
 }
 
-// ✅ Enhanced Floating Result Dialog Component
+// Enhanced Floating Result Dialog Component
 @Composable
 private fun FloatingResultDialog(
     numbers: List<String>,
     prizeName: String,
     isSpecialPrize: Boolean,
     isViewingResults: Boolean,
-    isLastPrize: Boolean, // ✅ Thêm tham số để xác định giải có phải là giải cuối cùng không
+    isLastPrize: Boolean,
     onViewResults: () -> Unit,
     onContinue: () -> Unit,
     onClose: () -> Unit,
@@ -461,7 +513,7 @@ private fun FloatingResultDialog(
                     .padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // ✅ Enhanced header với animation
+                // Enhanced header với animation
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.fillMaxWidth()
@@ -501,7 +553,7 @@ private fun FloatingResultDialog(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // ✅ Enhanced FloatingResultGrid
+                // Enhanced FloatingResultGrid
                 FloatingResultGrid(
                     numbers = numbers,
                     prizeName = prizeName,
@@ -512,13 +564,13 @@ private fun FloatingResultDialog(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // ✅ Action buttons row - thay đổi theo trạng thái và loại giải
+                // Action buttons row - thay đổi theo trạng thái và loại giải
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     if (isLastPrize) {
-                        // ✅ Nút "Đóng" cho giải đặc biệt (giải cuối cùng)
+                        // Nút "Đóng" cho giải đặc biệt (giải cuối cùng)
                         Button(
                             onClick = {
                                 onClose()
@@ -546,7 +598,7 @@ private fun FloatingResultDialog(
                             )
                         }
                     } else {
-                        // ✅ Logic cũ cho các giải khác
+                        // Logic cũ cho các giải khác
                         if (!isViewingResults) {
                             // View results button
                             Button(
@@ -607,7 +659,7 @@ private fun FloatingResultDialog(
                     }
                 }
 
-                // ✅ Hint text - thay đổi theo trạng thái
+                // Hint text - thay đổi theo trạng thái
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Card(
@@ -1483,7 +1535,7 @@ private fun ControlButtonsSection(
                     Button(
                         onClick = {
                             if (uiState.isRolling) {
-                                onPause() // T��m dừng khi đang quay
+                                onPause() // Tạm dừng khi đang quay
                             } else {
                                 // Tạm dừng để xem kết quả - logic này sẽ được handle trong ViewModel
                                 onPause()
