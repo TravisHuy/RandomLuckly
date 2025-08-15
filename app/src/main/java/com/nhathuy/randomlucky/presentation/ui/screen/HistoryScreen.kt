@@ -50,12 +50,13 @@ import kotlinx.coroutines.delay
 @Composable
 fun HistoryScreen(
     viewModel: HistoryViewModel = hiltViewModel(),
-    onNavigateBack: () -> Unit = {},
+    onNavigateBack: (Boolean) -> Unit = { _ -> }, // ✅ Modified to include wasHistoryCleared parameter
     onNavigateToDetail: (String) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var showClearAllDialog by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
+    var wasHistoryCleared by remember { mutableStateOf(false) } // ✅ Track if history was cleared
 
     LaunchedEffect(searchQuery) {
         viewModel.searchSessions(searchQuery)
@@ -96,7 +97,9 @@ fun HistoryScreen(
                 },
                 navigationIcon = {
                     IconButton(
-                        onClick = onNavigateBack,
+                        onClick = {
+                            onNavigateBack(wasHistoryCleared) // ✅ Pass the cleared state
+                        },
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .background(Color.White.copy(alpha = 0.1f))
@@ -316,6 +319,8 @@ fun HistoryScreen(
                         onClick = {
                             viewModel.clearAllHistory()
                             showClearAllDialog = false
+                            wasHistoryCleared = true // ✅ Set flag when history is cleared
+                            println("DEBUG: History cleared, flag set to true")
                         }
                     ) {
                         Text("Xóa tất cả", color = MaterialTheme.colorScheme.error)

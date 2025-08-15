@@ -55,8 +55,7 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons.extended)
 
-    implementation("androidx.datastore:datastore-preferences:1.0.0"
-    )
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
     // Hilt
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
@@ -72,6 +71,9 @@ dependencies {
 
     // Gson
     implementation(libs.gson)
+
+    // lifecycle compose
+    implementation(libs.androidx.lifecycle.compose)
 
     // Testing
     testImplementation(libs.junit)

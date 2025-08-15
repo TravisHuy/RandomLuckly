@@ -1,5 +1,6 @@
 package com.nhathuy.randomlucky.presentation.ui.screen
 
+import android.util.Log
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
@@ -10,7 +11,6 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -29,24 +29,85 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.nhathuy.randomlucky.domain.model.LotterySession
 import com.nhathuy.randomlucky.presentation.state.LotteryUiState
 import com.nhathuy.randomlucky.presentation.ui.components.*
 import com.nhathuy.randomlucky.presentation.viewmodel.LotteryViewModel
+import com.nhathuy.randomlucky.presentation.viewmodel.HistoryViewModel
 import com.nhathuy.randomlucky.presentation.theme.*
 import kotlinx.coroutines.delay
+
+private const val LOTTERY_SCREEN_TAG = "LotteryScreen"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LotteryScreen(
     viewModel: LotteryViewModel = hiltViewModel(),
+    historyViewModel: HistoryViewModel = hiltViewModel(),
     onNavigateToHistory: () -> Unit = {},
-    onNavigateToSettings: () -> Unit = {}
+    onNavigateToSettings: () -> Unit = {},
+    shouldReset: Boolean = false,
+    onResetHandled: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val scrollState = rememberScrollState()
+
+    // kiểm tra xem đã quay về màn hình nào chưa
+    var isReturningFromNavigation by remember { mutableStateOf(false) }
+
+    // reset khi xóa tất cả lịch sử back về lottery
+    LaunchedEffect(shouldReset) {
+        if (shouldReset) {
+            viewModel.resetLottery()
+            onResetHandled()
+            Log.d(LOTTERY_SCREEN_TAG, "DEBUG: Lottery reset due to history being cleared")
+        }
+    }
+
+
+    // reset floating dialog và scroll khi quay về màn hình
+    LaunchedEffect(Unit) {
+        // đây sẽ chạy mỗi khi chúng ta chuyển về màn hình này
+        isReturningFromNavigation = true
+        delay(100)
+        isReturningFromNavigation = false
+    }
+
+    // State cho hiệu ứng dropping balls và floating results
+    var droppingNumbers by remember { mutableStateOf<List<String>>(emptyList()) }
+    var floatingResults by remember { mutableStateOf<List<String>>(emptyList()) }
+    var currentPrizeName by remember { mutableStateOf("") }
+    var isShowingFloatingDialog by remember { mutableStateOf(false) }
+    var droppingColors by remember { mutableStateOf<List<Color>>(emptyList()) }
+    var isSpecialPrize by remember { mutableStateOf(false) }
+    var isViewingResults by remember { mutableStateOf(false) }
+
+
+    // reset floating dialog trạng thái khi trờ về màn hình
+    LaunchedEffect(isReturningFromNavigation) {
+        if (isReturningFromNavigation) {
+            // xóa floating dialog và hiển thị kết quả mới nhất.
+            isShowingFloatingDialog = false
+            floatingResults = emptyList()
+            isViewingResults = false
+            droppingNumbers = emptyList()
+            droppingColors = emptyList()
+
+            // reset scroll và hiển thị kết quả vừa quay
+            if (uiState.results.isNotEmpty()) {
+                delay(200)
+                // Scroll xuống kết quả vừa quay
+                scrollState.animateScrollTo(800)
+            }
+
+            Log.d(LOTTERY_SCREEN_TAG, "DEBUG: Reset floating dialog state on navigation return")
+        }
+    }
 
     // Theo dõi số lượng kết quả để tự động scroll
     val previousResultCount = remember { mutableStateOf(uiState.results.size) }
@@ -58,36 +119,100 @@ fun LotteryScreen(
     val hasValidSession = uiState.completedSession != null &&
             uiState.completedSession!!.results.isNotEmpty()
 
+    // xóa tất cả các hiệu ứng khi giải đã reset
+    LaunchedEffect(uiState.results.isEmpty() && !uiState.isRunning, shouldReset) {
+        if (shouldReset && uiState.results.isEmpty() && !uiState.isRunning && uiState.currentPrize == null) {
+            droppingNumbers = emptyList()
+            floatingResults = emptyList()
+            isShowingFloatingDialog = false
+            isViewingResults = false
+            droppingColors = emptyList()
+            currentPrizeName = ""
+            isSpecialPrize = false
+            Log.d(LOTTERY_SCREEN_TAG, "DEBUG: All effects cleared due to explicit lottery reset")
+        }
+    }
 
-    LaunchedEffect(uiState.results.size, uiState.isRolling, uiState.currentPrize) {
+    // Enhanced result handling với dialog logic
+    LaunchedEffect(uiState.results.size, uiState.isRolling, isReturningFromNavigation, uiState.completedSession) {
+        val latestResult = uiState.results.values.lastOrNull()
+
+        // Không trigger animation nếu session đã hoàn thành hoặc đang quay về từ navigation
+        if (latestResult != null &&
+            !uiState.isRolling &&
+            latestResult.numbers.isNotEmpty() &&
+            !isReturningFromNavigation &&
+            uiState.completedSession == null //Chỉ trigger khi session chưa hoàn thành
+        ) {
+            currentPrizeName = latestResult.prize.displayName
+            isSpecialPrize = latestResult.prize.id == "special"
+
+            // Xác định màu sắc theo giải
+            val prizeColors = List(latestResult.numbers.size) {
+                when {
+                    latestResult.prize.id == "special" -> Color(0xFFFFD700) // Vàng
+                    latestResult.prize.id == "first" -> Color(0xFFE91E63)   // Hồng
+                    latestResult.prize.id == "second" -> Color(0xFF2196F3)  // Xanh dương
+                    latestResult.prize.id == "third" -> Color(0xFF4CAF50)   // Xanh lá
+                    else -> Color(0xFF4FC3F7) // Xanh nhạt
+                }
+            }
+
+            //  Phase 1: Chuẩn bị và scroll đến vị trí dropping
+            droppingNumbers = latestResult.numbers
+            droppingColors = prizeColors
+            isShowingFloatingDialog = false
+            isViewingResults = false // Reset state
+
+            //  Scroll để dropping balls hiển thị trong viewport
+            delay(100)
+            val droppingScrollTarget = when {
+                latestResult.numbers.size <= 3 -> 450
+                latestResult.numbers.size <= 6 -> 480
+                latestResult.numbers.size <= 10 -> 500
+                else -> 520
+            }
+            scrollState.animateScrollTo(droppingScrollTarget)
+
+            //  Đợi dropping animation hoàn thành - giảm delay time để nhanh hơn
+            val dropDuration = when {
+                latestResult.numbers.size == 1 -> 1200L      // 1 số: 1200L
+                latestResult.numbers.size <= 3 -> 1800L     // 2-3 số:  1800L
+                latestResult.numbers.size <= 6 -> 2200L     // 4-6 số:  2200L
+                latestResult.numbers.size <= 10 -> 2800L    // 7-10 số:  2800L
+                latestResult.numbers.size <= 15 -> 3500L    // 11-15 số:  3500L
+                else -> 4200L                               // Nhiều số:  4200L
+            }
+            delay(dropDuration)
+
+            //  Kiểm tra nếu đang xem kết quả thì không chuyển sang floating dialog
+            if (!isViewingResults) {
+                //  Phase 2: Clear dropping, show floating dialog
+                droppingNumbers = emptyList()
+                floatingResults = latestResult.numbers
+                isShowingFloatingDialog = true
+            }
+        }
+
+        // Reset khi bắt đầu giải mới
+        if (uiState.isRolling && uiState.currentPrize != null) {
+            droppingNumbers = emptyList()
+            floatingResults = emptyList()
+            isShowingFloatingDialog = false
+            isViewingResults = false
+
+            // Scroll về lottery machine khi bắt đầu quay
+            delay(200)
+            scrollState.animateScrollTo(150)
+        }
+    }
+
+    // Auto scroll logic cho các trường hợp khác
+    LaunchedEffect(uiState.results.size, uiState.isRolling) {
         if (isFirstLaunch.value) {
             isFirstLaunch.value = false
             previousResultCount.value = uiState.results.size
             return@LaunchedEffect
-        }
-
-        // Khi bắt đầu quay giải mới
-        if (uiState.isRolling && uiState.results.isEmpty() && uiState.currentPrize != null) {
-            // Scroll về đầu để user thấy được lottery machine và current prize
-            scrollState.animateScrollTo(0)
-            previousResultCount.value = 0
-            return@LaunchedEffect
-        }
-
-        // Khi có kết quả mới được tạo ra
-        if (uiState.results.size > previousResultCount.value && !uiState.isRolling) {
-            // Đợi animation hiển thị kết quả hoàn thành
-            delay(400)
-
-            // Tính toán vị trí scroll để hiển thị "Latest Result Section"
-            val targetScrollPosition = when {
-                uiState.results.size == 1 -> 700    // Scroll vừa đủ để thấy kết quả đầu tiên
-                uiState.results.size <= 3 -> 900    // Scroll cho 2-3 kết quả
-                else -> 1100                        // Scroll nhiều hơn khi có nhiều kết quả
-            }
-
-            scrollState.animateScrollTo(targetScrollPosition)
-            previousResultCount.value = uiState.results.size
         }
 
         // Khi reset hoàn toàn (làm mới)
@@ -97,12 +222,42 @@ fun LotteryScreen(
         }
     }
 
-    //  scroll khi bắt đầu quay giải tiếp theo
-    LaunchedEffect(uiState.currentPrize?.id) {
-        if (uiState.isRolling && uiState.currentPrize != null) {
-            scrollState.animateScrollTo(200)
+    // reset khi session hoàn thành hoặc reset lottery
+    LaunchedEffect(uiState.completedSession, uiState.results.isEmpty()) {
+        if (uiState.completedSession != null || uiState.results.isEmpty()) {
+            // Clear tất cả animation states khi session hoàn thành
+            isShowingFloatingDialog = false
+            floatingResults = emptyList()
+            isViewingResults = false
+            droppingNumbers = emptyList()
+            droppingColors = emptyList()
+
+            Log.d(LOTTERY_SCREEN_TAG, "DEBUG: Cleared all animation states - session completed: ${uiState.completedSession != null}, results empty: ${uiState.results.isEmpty()}")
         }
     }
+
+    val handleNavigateToHistory = {
+        // xóa floating dialog trước khi chuyển hướng
+        isShowingFloatingDialog = false
+        floatingResults = emptyList()
+        isViewingResults = false
+        droppingNumbers = emptyList()
+        droppingColors = emptyList()
+
+        onNavigateToHistory()
+    }
+
+    val handleNavigateToSettings = {
+        // xóa floating dialog trước khi chuyển hướng
+        isShowingFloatingDialog = false
+        floatingResults = emptyList()
+        isViewingResults = false
+        droppingNumbers = emptyList()
+        droppingColors = emptyList()
+
+        onNavigateToSettings()
+    }
+
 
     Box(
         modifier = Modifier
@@ -117,7 +272,7 @@ fun LotteryScreen(
                 )
             )
     ) {
-        // Special effects overlay
+        // hiển thị giải đặc biệt
         SpecialEffectsOverlay(
             isActive = uiState.isRolling && uiState.currentPrize?.id == "special" && !uiState.isPaused,
             modifier = Modifier.fillMaxSize()
@@ -133,8 +288,8 @@ fun LotteryScreen(
         ) {
             // Header
             TopHeader(
-                onNavigateToHistory = onNavigateToHistory,
-                onNavigateToSettings = onNavigateToSettings
+                onNavigateToHistory = handleNavigateToHistory,
+                onNavigateToSettings = handleNavigateToSettings
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -157,18 +312,32 @@ fun LotteryScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Lottery machine - more compact
+            // Enhanced Lottery machine với số thật
             LotteryBallMachine(
                 isRolling = uiState.isRolling && !uiState.isPaused,
                 rollingProgress = uiState.rollingProgress,
+                currentNumbers = uiState.currentPrize?.let { prize ->
+                    // Tạo danh sách số có thể trúng cho giải này
+                    when (prize.id) {
+                        "special" -> (1..99).map { it.toString().padStart(2, '0') }.shuffled()
+                            .take(12)
+
+                        "first" -> (1..99).map { it.toString().padStart(2, '0') }.shuffled()
+                            .take(10)
+
+                        "second" -> (10..99).map { it.toString() }.shuffled().take(15)
+                        "third" -> (100..999).map { it.toString() }.shuffled().take(20)
+                        else -> (1..50).map { it.toString() }.shuffled().take(8)
+                    }
+                } ?: emptyList(),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(280.dp)
+                    .height(300.dp)
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-            // Control buttons - improved layout
+            // Control buttons
             ControlButtonsSection(
                 uiState = uiState,
                 onStart = { viewModel.startLottery() },
@@ -177,21 +346,54 @@ fun LotteryScreen(
                 onResume = { viewModel.resumeLottery() },
                 onReset = {
                     viewModel.resetLottery()
+                    // Clear effects
+                    droppingNumbers = emptyList()
+                    floatingResults = emptyList()
+                    isShowingFloatingDialog = false
                     previousResultCount.value = 0
                     isFirstLaunch.value = false
                 }
             )
 
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Dropping balls animation với position tối ưu
+            if (droppingNumbers.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(80.dp)
+                        .padding(horizontal = 6.dp),
+                    contentAlignment = Alignment.TopCenter
+                ) {
+                    DroppingBallCompleted(
+                        numbers = droppingNumbers,
+                        colors = droppingColors,
+                        isDropping = true,
+                        onAllDropsComplete = {
+                            // Sound effect hoặc haptic feedback có thể thêm ở đây
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(60.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
 
-            if (hasValidResults && !uiState.isRolling) {
+            // Latest result section (khi không có floating)
+            if (hasValidResults && !uiState.isRolling && !isShowingFloatingDialog) {
                 LatestResultSection(
                     uiState = uiState,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
 
-            //hiển thị khi có từ 2 kết quả trở lên
+            // Results board cho nhiều giải
             if ((hasValidResults && uiState.results.size >= 2) || hasValidSession) {
                 Spacer(modifier = Modifier.height(16.dp))
                 LotteryResultsBoard(
@@ -209,8 +411,293 @@ fun LotteryScreen(
                 }
             }
 
-            // padding bottom để đảm bảo có thể scroll đầy đủ
+            // Bottom padding
             Spacer(modifier = Modifier.height(120.dp))
+        }
+
+        // Floating Result Dialog - hiển thị như overlay
+        if (isShowingFloatingDialog && floatingResults.isNotEmpty()) {
+            Dialog(
+                onDismissRequest = {
+                    if (!isViewingResults) {
+                        isShowingFloatingDialog = false
+                        floatingResults = emptyList()
+                    }
+                },
+                properties = DialogProperties(
+                    dismissOnBackPress = !isViewingResults,
+                    dismissOnClickOutside = !isViewingResults,
+                    usePlatformDefaultWidth = false
+                )
+            ) {
+                FloatingResultDialog(
+                    numbers = floatingResults,
+                    prizeName = currentPrizeName,
+                    isSpecialPrize = isSpecialPrize,
+                    isViewingResults = isViewingResults,
+                    isLastPrize = isSpecialPrize, // Giải đặc biệt là giải cuối cùng
+                    onViewResults = {
+                        isViewingResults = true
+                        //  Thực sự pause lottery thông qua viewModel
+                        viewModel.pauseForViewingResults()
+                    },
+                    onContinue = {
+                        isShowingFloatingDialog = false
+                        floatingResults = emptyList()
+                        isViewingResults = false
+                        // Resume lottery để tiếp tục quay giải tiếp theo
+                        viewModel.resumeLottery()
+                    },
+                    onClose = {
+                        // Đóng dialog khi là giải cuối cùng
+                        isShowingFloatingDialog = false
+                        floatingResults = emptyList()
+                        isViewingResults = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+// Enhanced Floating Result Dialog Component
+@Composable
+private fun FloatingResultDialog(
+    numbers: List<String>,
+    prizeName: String,
+    isSpecialPrize: Boolean,
+    isViewingResults: Boolean,
+    isLastPrize: Boolean,
+    onViewResults: () -> Unit,
+    onContinue: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth(0.95f)
+            .wrapContentHeight()
+            .padding(16.dp),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xFF1A1A2E)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 16.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    brush = if (isSpecialPrize) {
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color(0xFF2D1B69).copy(alpha = 0.8f),
+                                Color(0xFF1A1A2E),
+                                Color(0xFF0F0F23)
+                            )
+                        )
+                    } else {
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color(0xFF1E3A8A).copy(alpha = 0.6f),
+                                Color(0xFF1A1A2E),
+                                Color(0xFF0F0F23)
+                            )
+                        )
+                    }
+                )
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Enhanced header với animation
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // Celebration icon
+                    Text(
+                        text = if (isSpecialPrize) "🏆" else "⭐",
+                        fontSize = 48.sp,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+
+                    // Prize title
+                    Text(
+                        text = if (isSpecialPrize) "🎉 $prizeName 🎉" else "✨ $prizeName ✨",
+                        fontSize = if (isSpecialPrize) 24.sp else 22.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isSpecialPrize) LotteryGold else LotteryLightBlue,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Subtitle - thay đổi theo trạng thái
+                    Text(
+                        text = if (isViewingResults) {
+                            if (isSpecialPrize) "Đang xem giải thưởng cao nhất" else "Đang xem kết quả"
+                        } else {
+                            if (isSpecialPrize) "Chúc mừng! Giải thưởng cao nhất!" else "Kết quả vừa được quay!"
+                        },
+                        fontSize = 14.sp,
+                        color = Color.White.copy(alpha = 0.8f),
+                        textAlign = TextAlign.Center,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Enhanced FloatingResultGrid
+                FloatingResultGrid(
+                    numbers = numbers,
+                    prizeName = prizeName,
+                    isSpecialPrize = isSpecialPrize,
+                    isVisible = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Action buttons row - thay đổi theo trạng thái và loại giải
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (isLastPrize) {
+                        // Nút "Đóng" cho giải đặc biệt (giải cuối cùng)
+                        Button(
+                            onClick = {
+                                onClose()
+                                println("DEBUG: Clicked Close button for special prize")
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = LotteryGold
+                            ),
+                            shape = RoundedCornerShape(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Đóng",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.Black
+                            )
+                        }
+                    } else {
+                        // Logic cũ cho các giải khác
+                        if (!isViewingResults) {
+                            // View results button
+                            Button(
+                                onClick = {
+                                    onViewResults()
+                                    println("DEBUG: Clicked View Results button")
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = LotteryLightBlue
+                                ),
+                                shape = RoundedCornerShape(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Visibility,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Xem kết quả",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        } else {
+                            // Continue button - hiển thị khi đang xem kết quả
+                            Button(
+                                onClick = {
+                                    onContinue()
+                                    println("DEBUG: Clicked Continue button")
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = LotteryGreen
+                                ),
+                                shape = RoundedCornerShape(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Tiếp tục",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Hint text - thay đổi theo trạng thái
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.White.copy(alpha = 0.05f)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.6f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = if (isLastPrize) {
+                                "🎉 Tất cả giải đã hoàn thành! Nhấn 'Đóng' để kết thúc."
+                            } else if (isViewingResults) {
+                                "💡 Nhấn 'Tiếp tục' để quay giải tiếp theo"
+                            } else {
+                                "👀 Nhấn 'Xem kết quả' để tạm dừng và xem chi tiết"
+                            },
+                            fontSize = 12.sp,
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -224,7 +711,7 @@ private fun LatestResultSection(
     val latestResult = uiState.results.values.lastOrNull()
 
     AnimatedVisibility(
-        visible = latestResult != null && !uiState.isRolling ,
+        visible = latestResult != null && !uiState.isRolling,
         enter = slideInVertically(
             initialOffsetY = { fullHeight -> fullHeight },
             animationSpec = spring(
@@ -623,7 +1110,7 @@ private fun TopHeader(
             //dropdown menu
             DropdownMenu(
                 expanded = showDropdownMenu,
-                onDismissRequest = { showDropdownMenu = false},
+                onDismissRequest = { showDropdownMenu = false },
                 modifier = Modifier.background(
                     color = Color(0xFF1A1A2E),
                     shape = RoundedCornerShape(12.dp)
@@ -666,8 +1153,10 @@ private fun TopHeader(
                 //Settings menu item
                 DropdownMenuItem(
                     text = {
-                        Row(verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.Settings,
                                 contentDescription = null,
@@ -675,13 +1164,14 @@ private fun TopHeader(
                                 modifier = Modifier.size(20.dp)
                             )
 
-                            Text(text = "Cài đặt",
+                            Text(
+                                text = "Cài đặt",
                                 color = Color.White,
                                 fontSize = 16.sp,
-                                fontWeight = FontWeight.Medium)
+                                fontWeight = FontWeight.Medium
+                            )
                         }
-                    }
-                    , onClick = {
+                    }, onClick = {
                         showDropdownMenu = false
                         onNavigateToSettings()
                     },
@@ -934,6 +1424,7 @@ private fun CurrentPrizeCard(
     }
 }
 
+// Giữ nguyên ControlButtonsSection từ version cũ
 @Composable
 private fun ControlButtonsSection(
     uiState: LotteryUiState,
@@ -1029,7 +1520,7 @@ private fun ControlButtonsSection(
             }
         }
 
-        // ✅ Enhanced secondary control buttons - hiển thị khi đang chạy HOẶC có kết quả và không hoàn thành
+        // Enhanced secondary control buttons - hiển thị khi đang chạy HOẶC có kết quả và không hoàn thành
         AnimatedVisibility(
             visible = uiState.isRunning || (uiState.results.isNotEmpty() && uiState.completedSession == null),
             enter = slideInVertically() + fadeIn(),
@@ -1039,12 +1530,12 @@ private fun ControlButtonsSection(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // ✅ Pause button - hiển thị khi đang rolling HOẶC có kết quả và session chưa hoàn thành
+                // Pause button - hiển thị khi đang rolling HOẶC có kết quả và session chưa hoàn thành
                 if (uiState.canPause || (!uiState.isRolling && uiState.results.isNotEmpty() && uiState.completedSession == null)) {
                     Button(
                         onClick = {
                             if (uiState.isRolling) {
-                                onPause() // Tạm dừng khi đang rolling
+                                onPause() // Tạm dừng khi đang quay
                             } else {
                                 // Tạm dừng để xem kết quả - logic này sẽ được handle trong ViewModel
                                 onPause()
@@ -1073,33 +1564,6 @@ private fun ControlButtonsSection(
                     }
                 }
 
-                // ✅ Continue button - chỉ hiển thị khi có kết quả và session chưa hoàn thành và không đang rolling
-//                if (!uiState.isRolling && uiState.results.isNotEmpty() && uiState.completedSession == null && !uiState.isPaused) {
-//                    Button(
-//                        onClick = onResume, // Tiếp tục quay giải tiếp theo
-//                        modifier = Modifier
-//                            .weight(1f)
-//                            .height(44.dp),
-//                        colors = ButtonDefaults.buttonColors(
-//                            containerColor = LotteryGreen
-//                        ),
-//                        shape = RoundedCornerShape(22.dp)
-//                    ) {
-//                        Icon(
-//                            imageVector = Icons.Default.PlayArrow,
-//                            contentDescription = null,
-//                            modifier = Modifier.size(16.dp)
-//                        )
-//                        Spacer(modifier = Modifier.width(6.dp))
-//                        Text(
-//                            text = "Tiếp tục",
-//                            fontSize = 13.sp,
-//                            fontWeight = FontWeight.Medium,
-//                            color = Color.White
-//                        )
-//                    }
-//                }
-
                 // Stop button - luôn hiển thị khi có activity
                 OutlinedButton(
                     onClick = onReset,
@@ -1126,7 +1590,7 @@ private fun ControlButtonsSection(
             }
         }
 
-        // ✅ Result viewing hint - hiển thị khi có kết quả mới
+        // Result viewing hint - hiển thị khi có kết quả mới
         if (!uiState.isRolling && uiState.results.isNotEmpty() && uiState.completedSession == null) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -1149,7 +1613,7 @@ private fun ControlButtonsSection(
                         modifier = Modifier.size(16.dp)
                     )
                     Text(
-                        text = "✨ Kết quả đã sẵn sàng! Bạn có thể xem kết quả hoặc tiếp tục quay giải tiếp theo.",
+                        text = "✨ Kết quả đã s��n sàng! Bạn có thể xem kết quả hoặc tiếp tục quay giải tiếp theo.",
                         fontSize = 12.sp,
                         color = LotteryGold,
                         fontWeight = FontWeight.Medium,
@@ -1239,3 +1703,4 @@ private fun SessionCompletionCard(
         }
     }
 }
+

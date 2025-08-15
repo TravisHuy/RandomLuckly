@@ -82,6 +82,9 @@ class HistoryViewModel @Inject constructor(
             try {
                 lotteryRepository.clearAllSessions()
                 _uiState.update { it.copy(sessions = emptyList()) }
+
+                // ✅ Log để debug
+                println("DEBUG: All history cleared from HistoryViewModel")
             } catch (e: Exception) {
                 _uiState.update {
                     it.copy(error = "Không thể xóa lịch sử: ${e.message}")

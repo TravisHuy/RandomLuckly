@@ -26,9 +26,11 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.Canvas
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,13 +43,14 @@ import kotlin.random.Random
 fun LotteryBallMachine(
     isRolling: Boolean,
     rollingProgress: Float,
+    currentNumbers: List<String> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     val rotation by animateFloatAsState(
-        targetValue =  if(isRolling) 360f else 0f,
+        targetValue =  if(isRolling) 360f * 10 else 0f,
         animationSpec =  if(isRolling) {
             infiniteRepeatable(
-                animation = tween(durationMillis = 2000, easing = LinearEasing),
+                animation = tween(durationMillis = 3000, easing = LinearEasing),
                 repeatMode = RepeatMode.Restart
             )
         }
@@ -55,6 +58,15 @@ fun LotteryBallMachine(
             spring(stiffness = Spring.StiffnessLow)
         }
     )
+
+    val ballNumber = remember(isRolling) {
+        if (isRolling && currentNumbers.isNotEmpty()) {
+            // Trộn số thật với số random
+            (currentNumbers + List(15) { Random.nextInt(1, 100).toString() }).shuffled()
+        } else {
+            List(20) { Random.nextInt(1, 100).toString() }
+        }
+    }
 
     Card(modifier = modifier,
         shape = RoundedCornerShape(24.dp),
@@ -74,7 +86,7 @@ fun LotteryBallMachine(
                 modifier = Modifier.size(280.dp)
                     .rotate(rotation)
             ){
-                drawLotteryMachine(isRolling, rollingProgress)
+                drawLotteryMachine(isRolling, rollingProgress,ballNumber)
             }
 
             Box(
@@ -93,10 +105,15 @@ fun LotteryBallMachine(
             ) {
                 if (isRolling) {
                     Text(
-                        text = "?",
+                        text = "🎲",
                         fontSize = 48.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.Black
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                else {
+                    Text(
+                        text = "⭐",
+                        fontSize = 36.sp
                     )
                 }
             }
@@ -104,7 +121,7 @@ fun LotteryBallMachine(
     }
 }
 
-private fun DrawScope.drawLotteryMachine(isRolling: Boolean, progress: Float) {
+private fun DrawScope.drawLotteryMachine(isRolling: Boolean, progress: Float,ballNumbers: List<String>) {
     val center = Offset(size.width / 2, size.height / 2)
     val radius = size.minDimension / 2
 
@@ -132,45 +149,46 @@ private fun DrawScope.drawLotteryMachine(isRolling: Boolean, progress: Float) {
     )
     // Vẽ những quả bóng quay
     if (isRolling) {
-        val ballCount = 10
-        val ballRadius = 20.dp.toPx()
+        val ballCount = minOf(ballNumbers.size, 15)
+        val ballRadius = 18.dp.toPx()
 
         repeat(ballCount) { index ->
-            val angle = (index * 360f / ballCount) + (progress * 360f)
-            val ballDistance = radius * 0.7f * (0.8f + 0.2f * sin(angle * 3))
+            val angle = (index * 360f / ballCount) + (progress * 720f)
+            val ballDistance = radius * (0.5f + 0.3f * sin(angle * 2 + progress * 360f))
 
             val ballX = center.x + cos(Math.toRadians(angle.toDouble())).toFloat() * ballDistance
             val ballY = center.y + sin(Math.toRadians(angle.toDouble())).toFloat() * ballDistance
 
-            drawLotteryBall(
+            drawNumberedLotteryBall(
                 center = Offset(ballX, ballY),
                 radius = ballRadius,
                 color = BallColors[index % BallColors.size],
-                number = Random.nextInt(0, 100)
+                number = ballNumbers[index]
             )
         }
     }
 }
 
-private fun DrawScope.drawLotteryBall(
+private fun DrawScope.drawNumberedLotteryBall(
     center: Offset,
     radius: Float,
     color: Color,
-    number: Int
+    number: String
 ) {
-    // bóng của bóng
+    // Bóng của bóng
     drawCircle(
         color = Color.Black.copy(alpha = 0.3f),
-        radius = radius,
+        radius = radius * 0.9f,
         center = center.copy(y = center.y + 2.dp.toPx())
     )
 
-    // thân của bóng
+    // Thân của bóng với gradient đẹp hơn
     drawCircle(
         brush = Brush.radialGradient(
             colors = listOf(
                 color.copy(alpha = 0.9f),
-                color
+                color,
+                color.copy(alpha = 0.8f)
             ),
             center = center.copy(x = center.x - radius / 3, y = center.y - radius / 3),
             radius = radius
@@ -179,12 +197,12 @@ private fun DrawScope.drawLotteryBall(
         center = center
     )
 
-    // bóng highlight
+    // Highlight bóng
     drawCircle(
         brush = Brush.radialGradient(
             colors = listOf(
-                Color.White.copy(alpha = 0.6f),
-                Color.White.copy(alpha = 0.1f),
+                Color.White.copy(alpha = 0.7f),
+                Color.White.copy(alpha = 0.2f),
                 Color.Transparent
             ),
             center = center.copy(x = center.x - radius / 3, y = center.y - radius / 3),
@@ -193,4 +211,28 @@ private fun DrawScope.drawLotteryBall(
         radius = radius / 3,
         center = center.copy(x = center.x - radius / 3, y = center.y - radius / 3)
     )
+
+    // Vòng tròn trắng để viết số
+    drawCircle(
+        color = Color.White,
+        radius = radius * 0.5f,
+        center = center
+    )
+
+    // Viết số lên bóng
+    drawContext.canvas.nativeCanvas.apply {
+        val paint = android.graphics.Paint().apply {
+            this.color = android.graphics.Color.BLACK
+            textAlign = android.graphics.Paint.Align.CENTER
+            textSize = (radius * 0.6f)
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
+
+        drawText(
+            number,
+            center.x,
+            center.y + paint.textSize / 3,
+            paint
+        )
+    }
 }
