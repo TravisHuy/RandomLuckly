@@ -406,48 +406,53 @@ private fun handleResetApp(
 
 private fun handleContactSupport(context: Context) {
     val supportEmail = context.getString(R.string.email_dev)
-    val subject = "[Random Lucky] Phản hồi từ người dùng"
+    val subject = context.getString(R.string.email_subject)
     val body = """
         Xin chào TravisHuy,
-        
+
         Tôi muốn gửi phản hồi về ứng dụng Random Lucky - Xổ Số May Mắn:
-        
+
         📱 Thông tin thiết bị:
         • Phiên bản app: 1.0.0
-        • Hệ điều hành: Android
+        • Hệ điều hành:   Android ${android.os.Build.VERSION.RELEASE}
         • Thời gian: ${SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault()).format(Date())}
-        
+
          💬 Nội dung phản hồi:
         [Vui lòng viết phản hồi của bạn ở đây]
-        
+
         Cảm ơn bạn đã phát triển ứng dụng tuyệt vời này!
-        
+
         Trân trọng,
         Người dùng Random Lucky
     """.trimIndent()
 
-    val emailIntent = Intent(Intent.ACTION_SENDTO).apply {
-        data = Uri.parse("mailto:")
-        putExtra(Intent.EXTRA_EMAIL, arrayOf(supportEmail))
-        putExtra(Intent.EXTRA_SUBJECT, subject)
-        putExtra(Intent.EXTRA_TEXT, body)
-    }
-
     try {
-        if (emailIntent.resolveActivity(context.packageManager) != null) {
-            context.startActivity(emailIntent)
-        } else {
-            val clipboardManager =
-                context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            val clipData = ClipData.newPlainText("Support Email", supportEmail)
-            clipboardManager.setPrimaryClip(clipData)
+        val emailIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "message/rfc822" // Chỉ định loại email
+            putExtra(Intent.EXTRA_EMAIL, arrayOf(supportEmail))
+            putExtra(Intent.EXTRA_SUBJECT, subject)
+            putExtra(Intent.EXTRA_TEXT, body)
+        }
 
-            Toast.makeText(context, "Đã sao chép email hỗ trợ: $supportEmail", Toast.LENGTH_SHORT)
-                .show()
+        // Kiểm tra xem có ứng dụng email nào không
+        if (emailIntent.resolveActivity(context.packageManager) != null) {
+            context.startActivity(Intent.createChooser(emailIntent, "Chọn ứng dụng email"))
+            return
         }
     } catch (e: Exception) {
-        Toast.makeText(context, "Không thể mở úng dụng email", Toast.LENGTH_SHORT).show()
+        // Log lỗi để debug
+        android.util.Log.e("EmailError", "ACTION_SEND failed: ${e.message}")
     }
+}
+private fun copyToClipboard(context: Context, email: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("Email", email))
+
+    Toast.makeText(
+        context,
+        "📧 Đã copy email: $email",
+        Toast.LENGTH_SHORT
+    ).show()
 }
 
 @Composable

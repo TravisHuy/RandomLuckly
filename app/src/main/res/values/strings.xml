@@ -1,4 +1,12 @@
 <resources>
     <string name="app_name">RandomLucky</string>
     <string name="email_dev">travishuy.dev@gmail.com</string>
+    <string name="email_subject">[Random Lucky] Phản hồi từ người dùng</string>
+    <string name="email_chooser_title">Chọn ứng dụng email</string>
+
+    <!-- Support messages -->
+    <string name="email_copied">📧 Đã sao chép email hỗ trợ: %s\nVui lòng mở ứng dụng email và dán vào!</string>
+    <string name="email_error">❌ Không thể mở ứng dụng email. Email hỗ trợ: %s</string>
+    <string name="contact_support_title">Liên hệ hỗ trợ</string>
+
 </resources>
